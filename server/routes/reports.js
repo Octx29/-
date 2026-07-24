@@ -11,7 +11,10 @@ async function sendWorkbook(res, filename, buildSheet) {
   const workbook = new ExcelJS.Workbook();
   buildSheet(workbook);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  // HTTP headers are Latin-1 only - a raw Thai filename here throws inside Node's http module.
+  // RFC 5987 filename* carries the real UTF-8 name; the plain filename is an ASCII-safe fallback.
+  const asciiFallback = filename.replace(/[^\x20-\x7E]/g, '_');
+  res.setHeader('Content-Disposition', `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
   await workbook.xlsx.write(res);
   res.end();
 }
