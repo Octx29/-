@@ -1,0 +1,131 @@
+// Prisma schema for the school-teacher-app backend.
+// SQLite for local dev; swap the datasource provider + DATABASE_URL to Postgres for production.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Teacher {
+  id           Int         @id @default(autoincrement())
+  username     String      @unique
+  passwordHash String
+  name         String
+  subject      String
+  createdAt    DateTime    @default(now())
+  classRooms   ClassRoom[]
+}
+
+model ClassRoom {
+  id                Int                @id @default(autoincrement())
+  name              String // e.g. "ม. 1/2"
+  subject           String
+  teacherId         Int
+  teacher           Teacher            @relation(fields: [teacherId], references: [id])
+  lineGroupId       String? // set once the LINE Messaging API channel is configured
+  students          Student[]
+  scheduleSlots     ScheduleSlot[]
+  assignments       Assignment[]
+  attendanceRecords AttendanceRecord[]
+  termScoreEntries  TermScoreEntry[]
+}
+
+model ScheduleSlot {
+  id          Int       @id @default(autoincrement())
+  classRoomId Int
+  classRoom   ClassRoom @relation(fields: [classRoomId], references: [id])
+  dayOfWeek   Int // 0 = Sunday ... 6 = Saturday
+  startTime   String // "08:30"
+  endTime     String // "09:20"
+}
+
+model Student {
+  id                Int                @id @default(autoincrement())
+  studentId         String             @unique // 5-digit public lookup ID
+  name              String
+  classRoomId       Int
+  classRoom         ClassRoom          @relation(fields: [classRoomId], references: [id])
+  attendanceRecords AttendanceRecord[]
+  submissions       Submission[]
+  termScoreEntries  TermScoreEntry[]
+  materialsChecks   MaterialsCheck[]
+}
+
+model AttendanceRecord {
+  id          Int       @id @default(autoincrement())
+  studentId   Int
+  student     Student   @relation(fields: [studentId], references: [id])
+  classRoomId Int
+  classRoom   ClassRoom @relation(fields: [classRoomId], references: [id])
+  date        String // "YYYY-MM-DD"
+  status      String // present | absent | late
+  checkedVia  String    @default("manual") // manual | qr
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([studentId, date])
+}
+
+model Assignment {
+  id           Int           @id @default(autoincrement())
+  classRoomId  Int
+  classRoom    ClassRoom     @relation(fields: [classRoomId], references: [id])
+  title        String
+  type         String // homework | quiz | in_class
+  dueDate      String? // "YYYY-MM-DD" - nullable for same-day in-class work
+  maxScore     Int           @default(100)
+  createdAt    DateTime      @default(now())
+  submissions  Submission[]
+  reminderLogs ReminderLog[]
+}
+
+model Submission {
+  id           Int        @id @default(autoincrement())
+  assignmentId Int
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  studentId    Int
+  student      Student    @relation(fields: [studentId], references: [id])
+  submittedAt  DateTime? // null = missing
+  score        Int?
+  checkedVia   String     @default("manual") // manual | qr
+
+  @@unique([assignmentId, studentId])
+}
+
+model TermScoreEntry {
+  id          Int       @id @default(autoincrement())
+  studentId   Int
+  student     Student   @relation(fields: [studentId], references: [id])
+  classRoomId Int
+  classRoom   ClassRoom @relation(fields: [classRoomId], references: [id])
+  term        String // pre_midterm | midterm | final
+  score       Float
+  maxScore    Float     @default(100)
+
+  @@unique([studentId, classRoomId, term])
+}
+
+model MaterialsCheck {
+  id               Int     @id @default(autoincrement())
+  studentId        Int
+  student          Student @relation(fields: [studentId], references: [id])
+  date             String
+  broughtMaterials Boolean
+  checkedVia       String  @default("manual")
+
+  @@unique([studentId, date])
+}
+
+model ReminderLog {
+  id           Int        @id @default(autoincrement())
+  assignmentId Int
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  kind         String // assigned | due_tomorrow | expired
+  sentAt       DateTime   @default(now())
+
+  @@unique([assignmentId, kind])
+}

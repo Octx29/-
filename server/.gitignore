@@ -1,0 +1,9 @@
+node_modules
+# Keep environment variables out of version control
+.env
+
+/lib/generated/prisma
+
+# Local dev database - not a build artifact worth versioning
+prisma/*.sqlite
+prisma/*.sqlite-journal
