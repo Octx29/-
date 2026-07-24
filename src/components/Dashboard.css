@@ -61,6 +61,56 @@
   font-size: 0.85rem;
 }
 
+.class-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2.5rem;
+}
+
+.class-dashboard-card {
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid var(--border-color);
+}
+
+.class-dashboard-card:hover {
+  border-color: var(--primary-color);
+}
+
+.class-dashboard-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.class-dashboard-card-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  color: var(--text-main);
+}
+
+.class-dashboard-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.class-dashboard-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.class-dashboard-stat svg {
+  color: var(--accent-brass);
+  flex-shrink: 0;
+}
+
 .quick-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

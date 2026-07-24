@@ -13,6 +13,7 @@ import reportsRoutes from './routes/reports.js';
 import lookupRoutes from './routes/lookup.js';
 import scanRoutes from './routes/scan.js';
 import cronRoutes from './routes/cron.js';
+import dashboardRoutes from './routes/dashboard.js';
 
 const app = express();
 
@@ -37,5 +38,6 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/lookup', lookupRoutes);
 app.use('/api/scan', scanRoutes);
 app.use('/api/cron', cronRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 export default app;
