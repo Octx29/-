@@ -1,5 +1,5 @@
 // Prisma schema for the school-teacher-app backend.
-// SQLite for local dev; swap the datasource provider + DATABASE_URL to Postgres for production.
+// Postgres (Vercel Postgres / Neon), shared by local dev and production via DATABASE_URL.
 
 generator client {
   provider = "prisma-client-js"
@@ -7,7 +7,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
