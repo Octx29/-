@@ -9,7 +9,12 @@ import Reports from './Reports';
 import Scanner from './Scanner';
 
 const TeacherPortal = ({ teacher, onLogout }) => {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setTab] = useState('dashboard');
+  const [initialClassId, setInitialClassId] = useState(null);
+  const setActiveTab = (tab, classId = null) => {
+    setInitialClassId(classId);
+    setTab(tab);
+  };
 
   return (
     <div className="app-container">
@@ -18,9 +23,9 @@ const TeacherPortal = ({ teacher, onLogout }) => {
       <main className="main-content">
         {activeTab === 'dashboard' && <Dashboard teacher={teacher} setActiveTab={setActiveTab} />}
         {activeTab === 'schedule' && <Schedule setActiveTab={setActiveTab} />}
-        {activeTab === 'attendance' && <Attendance />}
+        {activeTab === 'attendance' && <Attendance initialClassId={initialClassId} />}
         {activeTab === 'scanner' && <Scanner />}
-        {activeTab === 'grades' && <Grades />}
+        {activeTab === 'grades' && <Grades initialClassId={initialClassId} />}
         {activeTab === 'missing-work' && <MissingWork />}
         {activeTab === 'reports' && <Reports />}
       </main>

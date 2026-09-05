@@ -169,3 +169,29 @@ button {
     overflow: visible !important;
   }
 }
+
+
+button { font: inherit; color: inherit; }
+button.nav-item { border: 0; width: 100%; text-align: left; background: transparent; }
+button.class-dashboard-card, button.action-card { text-align: left; }
+:focus-visible { outline: 3px solid var(--primary-color); outline-offset: 3px; }
+.main-content { min-width: 0; }
+.attendance-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem; }
+.attendance-header > div { display: flex; flex-wrap: wrap; gap: .75rem; }
+.attendance-header > div:first-child { display: block; }
+select { max-width: 100%; }
+@media (max-width: 760px) {
+  .app-container { flex-direction: column; }
+  .app-container > .sidebar { width: 100%; min-width: 0; height: auto; position: static; padding: 1rem; }
+  .sidebar .nav-links { display: flex; flex-direction: row; flex-wrap: wrap; gap: .25rem; }
+  button.nav-item { width: auto; padding: .6rem; }
+  .sidebar-footer { margin-top: .75rem; padding-top: .75rem; }
+  .teacher-profile { display: none; }
+  .main-content { width: 100%; padding: 1rem; }
+  .dashboard-header, .attendance-controls { flex-wrap: wrap; gap: .75rem; }
+  .class-selector { min-width: 0; width: 100%; }
+  .class-dashboard-grid, .quick-actions { grid-template-columns: minmax(0, 1fr); }
+  .attendance-table-container, .grades-table-container { overflow-x: auto; }
+  .attendance-header .btn { white-space: normal; }
+  .main-content form input { min-width: 0; }
+}

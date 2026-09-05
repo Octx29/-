@@ -4,12 +4,14 @@ import { requireTeacher } from '../middleware/auth.js';
 import { ownedClassRoom, assertBatchBelongsToClassRoom } from '../lib/authorize.js';
 import { syncToSheets } from '../services/sheetsSync.js';
 
+import { validDate } from '../../shared/schoolDate.js';
+
 const router = Router();
 
 // GET /api/attendance?classId=1&date=2026-07-23
 router.get('/', requireTeacher, async (req, res) => {
   const { classId, date } = req.query;
-  if (!classId || !date) {
+  if (!classId || !validDate(date)) {
     return res.status(400).json({ error: 'ต้องระบุ classId และ date' });
   }
 
@@ -39,7 +41,7 @@ router.get('/', requireTeacher, async (req, res) => {
 // POST /api/attendance  { classId, date, records: [{ id (student db id), status }] }
 router.post('/', requireTeacher, async (req, res) => {
   const { classId, date, records } = req.body;
-  if (!classId || !date || !Array.isArray(records)) {
+  if (!classId || !validDate(date) || !Array.isArray(records)) {
     return res.status(400).json({ error: 'ข้อมูลไม่ครบถ้วน' });
   }
 
@@ -47,6 +49,7 @@ router.post('/', requireTeacher, async (req, res) => {
   if (!classRoom) return res.status(404).json({ error: 'ไม่พบห้องเรียนนี้' });
 
   const validStatuses = new Set(['present', 'absent', 'late']);
+  if (records.some(r => !r || (r.status != null && !validStatuses.has(r.status)))) return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
   const writable = records.filter((r) => validStatuses.has(r.status));
 
   // Owning the classroom does not imply owning the student IDs in the body. Every
@@ -71,7 +74,7 @@ router.post('/', requireTeacher, async (req, res) => {
           date: String(date),
           status: r.status,
         },
-        update: { status: r.status, classRoomId: classRoom.id },
+        update: { status: r.status, classRoomId: classRoom.id, checkedVia: 'manual' },
       })
     )
   );

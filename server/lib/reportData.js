@@ -1,13 +1,14 @@
+import { schoolDate } from '../../shared/schoolDate.js';
 import { prisma } from './prisma.js';
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = schoolDate;
 
 // Assignments past due with at least one student who hasn't submitted, for one teacher (optionally one class).
 export async function getMissingWorkData(teacherId, classId) {
   const assignments = await prisma.assignment.findMany({
     where: {
       classRoom: { teacherId, ...(classId ? { id: Number(classId) } : {}) },
-      dueDate: { not: null, lte: todayIso() },
+      dueDate: { not: null, lt: todayIso() },
     },
     include: {
       classRoom: { select: { id: true, name: true } },
@@ -49,7 +50,7 @@ export async function getScoreSummaryData(teacherId, classId) {
   for (const classRoom of classRooms) {
     for (const student of classRoom.students) {
       const submissions = await prisma.submission.findMany({
-        where: { studentId: student.id, assignment: { classRoomId: classRoom.id }, score: { not: null } },
+        where: { studentId: student.id, assignment: { classRoomId: classRoom.id, maxScore: { gt: 0 } }, submittedAt: { not: null }, score: { not: null } },
         include: { assignment: { select: { maxScore: true } } },
       });
       const scoredCount = submissions.length;

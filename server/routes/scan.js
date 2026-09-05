@@ -4,8 +4,11 @@ import { requireTeacher } from '../middleware/auth.js';
 import { ownedClassRoom, ownedAssignment, validStudentCode } from '../lib/authorize.js';
 import { syncToSheets } from '../services/sheetsSync.js';
 
+import { schoolDate } from '../../shared/schoolDate.js';
+import { saveSubmission } from '../lib/saveSubmission.js';
+
 const router = Router();
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = schoolDate;
 
 // POST /api/scan/attendance  { classId, studentCode }
 router.post('/attendance', requireTeacher, async (req, res) => {
@@ -45,11 +48,7 @@ router.post('/submission', requireTeacher, async (req, res) => {
   const student = await prisma.student.findFirst({ where: { studentId: code, classRoomId: assignment.classRoomId } });
   if (!student) return res.status(404).json({ error: 'ไม่พบนักเรียนรหัสนี้ในห้องนี้' });
 
-  await prisma.submission.upsert({
-    where: { assignmentId_studentId: { assignmentId: assignment.id, studentId: student.id } },
-    create: { assignmentId: assignment.id, studentId: student.id, submittedAt: new Date(), checkedVia: 'qr' },
-    update: { submittedAt: new Date(), checkedVia: 'qr' },
-  });
+  await saveSubmission(prisma, assignment.id, student.id, true, null, 'qr');
 
   await syncToSheets(prisma);
   res.json({ ok: true, student: { roll: student.studentId, name: student.name } });

@@ -5,6 +5,10 @@ import { ownedClassRoom, ownedAssignment, assertBatchBelongsToClassRoom } from '
 import { syncToSheets } from '../services/sheetsSync.js';
 import { notifyNewAssignment } from '../services/lineNotify.js';
 
+import { validMaximum, validScore } from '../lib/validation.js';
+import { validDate } from '../../shared/schoolDate.js';
+import { saveSubmission } from '../lib/saveSubmission.js';
+
 const router = Router();
 const VALID_TYPES = new Set(['homework', 'quiz', 'in_class']);
 
@@ -20,7 +24,7 @@ router.get('/', requireTeacher, async (req, res) => {
     prisma.assignment.findMany({
       where: { classRoomId: classRoom.id },
       orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { submissions: true } } },
+      include: { _count: { select: { submissions: { where: { submittedAt: { not: null } } } } } },
     }),
     prisma.student.count({ where: { classRoomId: classRoom.id } }),
   ]);
@@ -48,13 +52,17 @@ router.post('/', requireTeacher, async (req, res) => {
   const classRoom = await ownedClassRoom(classId, req.teacher.teacherId);
   if (!classRoom) return res.status(404).json({ error: 'ไม่พบห้องเรียนนี้' });
 
+  if (typeof title !== 'string' || !title.trim() || !validMaximum(maxScore ?? 100, true)
+      || (dueDate && !validDate(dueDate))) {
+    return res.status(400).json({ error: 'ชื่อ คะแนนเต็ม หรือวันที่ไม่ถูกต้อง' });
+  }
   const assignment = await prisma.assignment.create({
     data: {
       classRoomId: classRoom.id,
-      title,
+      title: title.trim(),
       type,
       dueDate: dueDate || null,
-      maxScore: maxScore ? Number(maxScore) : 100,
+      maxScore: Number(maxScore ?? 100),
     },
   });
 
@@ -81,7 +89,7 @@ router.get('/:id/submissions', requireTeacher, async (req, res) => {
       roll: s.studentId,
       name: s.name,
       submitted: !!byStudent[s.id]?.submittedAt,
-      score: byStudent[s.id]?.score ?? null,
+      score: byStudent[s.id]?.submittedAt ? byStudent[s.id].score : null,
     })),
   });
 });
@@ -96,29 +104,19 @@ router.post('/:id/submissions', requireTeacher, async (req, res) => {
 
   // The assignment is owned, but the student IDs in the body are not implied by that.
   // Any student outside the assignment's classroom rejects the whole batch.
+  if (records.some(r => !r || typeof r.submitted !== 'boolean' || !validScore(r.score, assignment.maxScore, true))) {
+    return res.status(400).json({ error: 'สถานะหรือคะแนนไม่ถูกต้อง คะแนนต้องอยู่ระหว่าง 0 และคะแนนเต็ม' });
+  }
   const batchError = await assertBatchBelongsToClassRoom(
     records.map((r) => r.studentId),
     assignment.classRoomId
   );
   if (batchError) return res.status(batchError.status).json(batchError.body);
 
-  await prisma.$transaction(
-    records.map((r) =>
-      prisma.submission.upsert({
-        where: { assignmentId_studentId: { assignmentId: assignment.id, studentId: Number(r.studentId) } },
-        create: {
-          assignmentId: assignment.id,
-          studentId: Number(r.studentId),
-          submittedAt: r.submitted ? new Date() : null,
-          score: r.score === '' || r.score == null ? null : Number(r.score),
-        },
-        update: {
-          submittedAt: r.submitted ? new Date() : null,
-          score: r.score === '' || r.score == null ? null : Number(r.score),
-        },
-      })
-    )
-  );
+  await prisma.$transaction(records.map(r => saveSubmission(
+    prisma, assignment.id, Number(r.studentId), r.submitted,
+    r.score === '' || r.score == null ? null : Number(r.score)
+  )));
 
   await syncToSheets(prisma);
   res.json({ ok: true });

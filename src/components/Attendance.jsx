@@ -3,12 +3,12 @@ import { Save, Check, X, Clock, AlertCircle, Users } from 'lucide-react';
 import { api } from '../lib/api';
 import './Attendance.css';
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+import { useSchoolDate } from '../lib/useSchoolDate';
 
-const Attendance = () => {
+const Attendance = ({ initialClassId = null }) => {
   const [classes, setClasses] = useState([]);
   const [selectedClassId, setSelectedClassId] = useState(null);
-  const [date] = useState(todayIso());
+  const date = useSchoolDate();
   // The roster carries the identity it was loaded for. A response that arrives after
   // the teacher has already selected another classroom must never become the roster
   // on screen, and must never be what Save posts.
@@ -21,10 +21,10 @@ const Attendance = () => {
       .get('/classes')
       .then((data) => {
         setClasses(data);
-        if (data.length > 0) setSelectedClassId(data[0].id);
+        if (data.length > 0) setSelectedClassId(data.some(c => c.id === initialClassId) ? initialClassId : data[0].id);
       })
       .catch((err) => setError(err.message));
-  }, []);
+  }, [initialClassId]);
 
   useEffect(() => {
     let active = true;
@@ -89,10 +89,10 @@ const Attendance = () => {
 
   return (
     <div className="animate-fade-in">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
+      <div className="attendance-header">
         <div>
           <h1 style={{ fontSize: '1.75rem', marginBottom: '0.25rem' }}>เช็คชื่อเข้าเรียน</h1>
-          <p style={{ color: 'var(--text-muted)' }}>วันที่: {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          <p style={{ color: 'var(--text-muted)' }}>วันที่: {new Date().toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button className="btn btn-secondary" onClick={markAllPresent} disabled={!rosterReady}>
@@ -107,7 +107,7 @@ const Attendance = () => {
       </div>
 
       {error && (
-        <div className="attendance-summary-banner" style={{ marginBottom: '1rem' }}>
+        <div role="alert" className="attendance-summary-banner" style={{ marginBottom: '1rem' }}>
           <AlertCircle size={20} />
           {error}
         </div>

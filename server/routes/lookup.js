@@ -24,15 +24,15 @@ router.get('/:studentId', lookupLimiter, async (req, res) => {
 
   const [attendanceRecords, submissions, termEntries] = await Promise.all([
     prisma.attendanceRecord.findMany({
-      where: { studentId: student.id },
+      where: { studentId: student.id, classRoomId: student.classRoomId },
       orderBy: { date: 'desc' },
       take: 30,
     }),
     prisma.submission.findMany({
-      where: { studentId: student.id },
+      where: { studentId: student.id, assignment: { classRoomId: student.classRoomId } },
       include: { assignment: true },
     }),
-    prisma.termScoreEntry.findMany({ where: { studentId: student.id } }),
+    prisma.termScoreEntry.findMany({ where: { studentId: student.id, classRoomId: student.classRoomId } }),
   ]);
 
   const assignments = await prisma.assignment.findMany({
@@ -64,7 +64,7 @@ router.get('/:studentId', lookupLimiter, async (req, res) => {
         dueDate: a.dueDate,
         maxScore: a.maxScore,
         submitted: !!submission?.submittedAt,
-        score: submission?.score ?? null,
+        score: submission?.submittedAt ? submission.score : null,
       };
     }),
     termScores,

@@ -9,6 +9,7 @@
     "postinstall": "prisma generate --schema server/prisma/schema.prisma",
     "lint": "oxlint",
     "test": "playwright test",
+    "test:api": "node tests/audit-api.mjs",
     "preview": "vite preview",
     "server": "node server/index.js",
     "server:migrate": "dotenv -e server/.env -- prisma migrate dev --schema server/prisma/schema.prisma",

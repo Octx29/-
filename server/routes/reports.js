@@ -95,7 +95,7 @@ router.get('/custom.xlsx', requireTeacher, async (req, res) => {
   const termEntries = await prisma.termScoreEntry.findMany({ where: { classRoomId: classRoom.id } });
 
   const scoreByStudentAssignment = {};
-  for (const s of submissions) scoreByStudentAssignment[`${s.studentId}_${s.assignmentId}`] = s.score;
+  for (const s of submissions) scoreByStudentAssignment[`${s.studentId}_${s.assignmentId}`] = s.submittedAt ? s.score : null;
 
   const termByStudent = {};
   for (const t of termEntries) {
@@ -130,7 +130,7 @@ router.get('/custom.xlsx', requireTeacher, async (req, res) => {
 
   const termKeyMap = { preMidterm: 'pre_midterm', midterm: 'midterm', final: 'final' };
   const safeName = String(filename || 'รายงาน').replace(/[^\w\-. ฀-๿]/g, '').trim() || 'รายงาน';
-  const outFilename = safeName.endsWith('.xlsx') ? safeName : `${safeName}.xlsx`;
+  const outFilename = /\.xlsx$/i.test(safeName) ? safeName : `${safeName}.xlsx`;
 
   await sendWorkbook(res, outFilename, (workbook) => {
     const sheet = workbook.addWorksheet('รายงาน');
@@ -141,7 +141,7 @@ router.get('/custom.xlsx', requireTeacher, async (req, res) => {
       const row = {};
       for (const key of selectedKeys) {
         if (key === 'studentId') row[key] = student.studentId;
-        else if (key === 'prefix') row[key] = '';
+        else if (key === 'prefix') row[key] = student.prefix;
         else if (key === 'name') row[key] = student.name;
         else if (key.startsWith('piece')) {
           const assignment = assignments[Number(key.replace('piece', '')) - 1];

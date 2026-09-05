@@ -9,10 +9,14 @@ const MODE_LABELS = { attendance: 'เช็คชื่อเข้าเรี
 const QRRoster = ({ classId }) => {
   const [students, setStudents] = useState([]);
   const [qrDataUrls, setQrDataUrls] = useState({});
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!classId) return;
     let cancelled = false;
+    setStudents([]);
+    setQrDataUrls({});
+    setError('');
     api.get(`/classes/${classId}/students`).then(async (list) => {
       if (cancelled) return;
       setStudents(list);
@@ -21,12 +25,13 @@ const QRRoster = ({ classId }) => {
         urls[s.id] = await QRCode.toDataURL(s.roll, { width: 160, margin: 1 });
       }
       if (!cancelled) setQrDataUrls(urls);
-    });
+    }).catch(err => { if (!cancelled) setError(err.message); });
     return () => { cancelled = true; };
   }, [classId]);
 
   return (
     <div>
+      <>{error && <p role="alert">{error}</p>}</>
       <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
         <button className="btn btn-secondary" onClick={() => window.print()}>
           <Printer size={16} /> พิมพ์
@@ -55,20 +60,22 @@ const CameraScanner = ({ classId, mode }) => {
   const [scanning, setScanning] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [log, setLog] = useState([]);
+  const [error, setError] = useState('');
   const html5QrRef = useRef(null);
 
   useEffect(() => {
     if (mode !== 'submission' || !classId) return undefined;
     let active = true;
     setLoadedAssignments({ classId: null, items: [] });
+    setError('');
     api.get(`/assignments?classId=${classId}`)
       .then((data) => {
         if (!active) return;
         setLoadedAssignments({ classId, items: data });
         setAssignmentId((current) => (data.some((a) => a.id === current) ? current : data[0]?.id ?? null));
       })
-      .catch(() => {
-        if (active) setLoadedAssignments({ classId, items: [] });
+      .catch(err => {
+        if (active) { setLoadedAssignments({ classId, items: [] }); setError(err.message); }
       });
     return () => { active = false; };
   }, [mode, classId]);
@@ -160,6 +167,7 @@ const CameraScanner = ({ classId, mode }) => {
 
   return (
     <div>
+      {error && <p role="alert">{error}</p>}
       {mode === 'submission' && (
         <div className="glass-panel" style={{ padding: '1rem', marginBottom: '1rem' }}>
           <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>เลือกงานที่จะเช็ค</label>
@@ -213,6 +221,7 @@ const CameraScanner = ({ classId, mode }) => {
 
 const Scanner = () => {
   const [classes, setClasses] = useState([]);
+  const [error, setError] = useState('');
   const [classId, setClassId] = useState(null);
   const [view, setView] = useState('scan'); // 'scan' | 'roster'
   const [mode, setMode] = useState('attendance');
@@ -221,11 +230,12 @@ const Scanner = () => {
     api.get('/classes').then((data) => {
       setClasses(data);
       if (data.length) setClassId(data[0].id);
-    });
+    }).catch(err => setError(err.message));
   }, []);
 
   return (
     <div className="animate-fade-in">
+      {error && <p role="alert">{error}</p>}
       <div className="dashboard-header no-print">
         <div>
           <h1 style={{ fontSize: '1.75rem', marginBottom: '0.25rem' }}>QR & สแกน</h1>
