@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireTeacher } from '../middleware/auth.js';
-import { ownedClassRoom } from '../lib/authorize.js';
+import { ownedClassRoom, assertBatchBelongsToClassRoom } from '../lib/authorize.js';
 import { syncToSheets } from '../services/sheetsSync.js';
 
 const router = Router();
@@ -42,6 +42,14 @@ router.post('/', requireTeacher, async (req, res) => {
   if (!classRoom) return res.status(404).json({ error: 'ไม่พบห้องเรียนนี้' });
 
   const valid = records.filter((r) => TERMS.includes(r.term) && r.score !== '' && r.score != null);
+
+  // Exam scores are written per student; a foreign student ID must not create a
+  // term-score row that then surfaces in the public student lookup.
+  const batchError = await assertBatchBelongsToClassRoom(
+    valid.map((r) => r.studentId),
+    classRoom.id
+  );
+  if (batchError) return res.status(batchError.status).json(batchError.body);
 
   await prisma.$transaction(
     valid.map((r) =>

@@ -9,8 +9,10 @@ const Attendance = () => {
   const [classes, setClasses] = useState([]);
   const [selectedClassId, setSelectedClassId] = useState(null);
   const [date] = useState(todayIso());
-  const [students, setStudents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // The roster carries the identity it was loaded for. A response that arrives after
+  // the teacher has already selected another classroom must never become the roster
+  // on screen, and must never be what Save posts.
+  const [loadedRoster, setLoadedRoster] = useState({ classId: null, date: null, rows: [] });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -25,31 +27,53 @@ const Attendance = () => {
   }, []);
 
   useEffect(() => {
-    if (!selectedClassId) return;
-    setLoading(true);
+    let active = true;
+    setLoadedRoster({ classId: null, date: null, rows: [] });
+    setError('');
+    if (!selectedClassId) return undefined;
     api
       .get(`/attendance?classId=${selectedClassId}&date=${date}`)
-      .then(setStudents)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .then((rows) => {
+        if (active) setLoadedRoster({ classId: selectedClassId, date, rows });
+      })
+      .catch((err) => {
+        if (active) setError(err.message);
+      });
+    return () => {
+      active = false;
+    };
   }, [selectedClassId, date]);
 
+  const rosterReady = loadedRoster.classId === selectedClassId && loadedRoster.date === date;
+  const students = rosterReady ? loadedRoster.rows : [];
+  const loading = Boolean(selectedClassId) && !rosterReady && !error;
+
   const updateStatus = (id, newStatus) => {
-    setStudents(students.map((s) => (s.id === id ? { ...s, status: newStatus } : s)));
+    if (!rosterReady) return;
+    setLoadedRoster((current) => ({
+      ...current,
+      rows: current.rows.map((s) => (s.id === id ? { ...s, status: newStatus } : s)),
+    }));
   };
 
   const markAllPresent = () => {
-    setStudents(students.map((s) => (!s.status ? { ...s, status: 'present' } : s)));
+    if (!rosterReady) return;
+    setLoadedRoster((current) => ({
+      ...current,
+      rows: current.rows.map((s) => (!s.status ? { ...s, status: 'present' } : s)),
+    }));
   };
 
   const handleSave = async () => {
+    // Save is bound to the loaded identity, not to whatever is currently selected.
+    if (!rosterReady) return;
     setSaving(true);
     setError('');
     try {
       await api.post('/attendance', {
-        classId: selectedClassId,
-        date,
-        records: students.map((s) => ({ id: s.id, status: s.status })),
+        classId: loadedRoster.classId,
+        date: loadedRoster.date,
+        records: loadedRoster.rows.map((s) => ({ id: s.id, status: s.status })),
       });
     } catch (err) {
       setError(err.message);
@@ -71,11 +95,11 @@ const Attendance = () => {
           <p style={{ color: 'var(--text-muted)' }}>วันที่: {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button className="btn btn-secondary" onClick={markAllPresent} disabled={loading}>
+          <button className="btn btn-secondary" onClick={markAllPresent} disabled={!rosterReady}>
             <Check size={16} />
             เช็ค "มาเรียน" ทั้งหมด (คนที่เหลือ)
           </button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={loading || saving}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={!rosterReady || saving}>
             <Save size={16} />
             {saving ? 'กำลังบันทึก...' : 'บันทึก'}
           </button>
@@ -170,10 +194,10 @@ const Attendance = () => {
                 </td>
               </tr>
             ))}
-            {!loading && students.length === 0 && (
+            {students.length === 0 && (
               <tr>
                 <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                  ห้องนี้ยังไม่มีรายชื่อนักเรียน
+                  {loading ? 'กำลังโหลด...' : error ? 'ไม่สามารถโหลดรายชื่อได้' : 'ห้องนี้ยังไม่มีรายชื่อนักเรียน'}
                 </td>
               </tr>
             )}
