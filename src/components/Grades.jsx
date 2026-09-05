@@ -257,29 +257,55 @@ const AssignmentGrading = ({ classId }) => {
 };
 
 const TermScores = ({ classId }) => {
-  const [rows, setRows] = useState([]);
+  // Exam rows are bound to the classroom they were loaded for. Without this, a
+  // classroom switch keeps the previous classroom's rows on screen and Save posts
+  // them under the newly selected classId - creating exam scores for the wrong room.
+  const [loaded, setLoaded] = useState({ classId: null, rows: [] });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [reloadToken, setReloadToken] = useState(0);
 
-  const load = () => api.get(`/term-scores?classId=${classId}`).then(setRows);
-  useEffect(() => { load(); }, [classId]);
+  useEffect(() => {
+    let active = true;
+    setLoaded({ classId: null, rows: [] });
+    setError('');
+    if (!classId) return undefined;
+    api.get(`/term-scores?classId=${classId}`)
+      .then((data) => { if (active) setLoaded({ classId, rows: data }); })
+      .catch((err) => { if (active) setError(err.message); });
+    return () => { active = false; };
+  }, [classId, reloadToken]);
+
+  const ready = loaded.classId === classId;
+  const rows = ready ? loaded.rows : [];
 
   const updateScore = (studentId, term, score) => {
-    setRows(rows.map((r) => (r.studentId === studentId ? { ...r, [term]: { ...(r[term] ?? { maxScore: 100 }), score } } : r)));
+    if (!ready) return;
+    setLoaded((current) => ({
+      ...current,
+      rows: current.rows.map((r) => (r.studentId === studentId ? { ...r, [term]: { ...(r[term] ?? { maxScore: 100 }), score } } : r)),
+    }));
   };
 
   const handleSave = async () => {
+    // Post the identity the rows were loaded under, and refuse entirely while a
+    // pending load means the rows on screen belong to another classroom.
+    if (!ready) return;
     setSaving(true);
+    setError('');
     try {
       const records = [];
-      for (const r of rows) {
+      for (const r of loaded.rows) {
         for (const term of Object.keys(TERM_LABELS)) {
           if (r[term]?.score !== undefined && r[term]?.score !== null && r[term]?.score !== '') {
             records.push({ studentId: r.studentId, term, score: r[term].score, maxScore: r[term].maxScore ?? 100 });
           }
         }
       }
-      await api.post('/term-scores', { classId, records });
-      load();
+      await api.post('/term-scores', { classId: loaded.classId, records });
+      setReloadToken((token) => token + 1);
+    } catch (err) {
+      setError(err.message);
     } finally {
       setSaving(false);
     }
@@ -287,8 +313,9 @@ const TermScores = ({ classId }) => {
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1.5rem' }}>
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+        {error && <span style={{ color: 'var(--danger)' }}>{error}</span>}
+        <button className="btn btn-primary" onClick={handleSave} disabled={!ready || saving}>
           <Save size={16} /> {saving ? 'กำลังบันทึก...' : 'บันทึกคะแนนสอบ'}
         </button>
       </div>
@@ -304,6 +331,13 @@ const TermScores = ({ classId }) => {
             </tr>
           </thead>
           <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={2 + Object.keys(TERM_LABELS).length} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                  {error ? 'ไม่สามารถโหลดคะแนนสอบได้' : ready ? 'ห้องนี้ยังไม่มีรายชื่อนักเรียน' : 'กำลังโหลด...'}
+                </td>
+              </tr>
+            )}
             {rows.map((r) => (
               <tr key={r.studentId}>
                 <td><strong>{r.name}</strong></td>
