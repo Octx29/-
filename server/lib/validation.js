@@ -36,3 +36,19 @@ export function validStudentCode(rawCode) {
   if (!STUDENT_CODE_PATTERN.test(code)) return null;
   return code;
 }
+
+
+export function numeric(value) {
+  return (typeof value === 'number' || (typeof value === 'string' && value.trim() !== ''))
+    && Number.isFinite(Number(value));
+}
+
+export function validMaximum(value, integer = false) {
+  return numeric(value) && Number(value) > 0 && Number(value) <= 2147483647
+    && (!integer || Number.isInteger(Number(value)));
+}
+
+export function validScore(value, maximum, integer = false) {
+  return value === '' || value == null || (numeric(value) && Number(value) >= 0
+    && Number(value) <= Number(maximum) && (!integer || Number.isInteger(Number(value))));
+}

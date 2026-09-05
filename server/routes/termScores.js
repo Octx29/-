@@ -4,6 +4,8 @@ import { requireTeacher } from '../middleware/auth.js';
 import { ownedClassRoom, assertBatchBelongsToClassRoom } from '../lib/authorize.js';
 import { syncToSheets } from '../services/sheetsSync.js';
 
+import { validMaximum, validScore } from '../lib/validation.js';
+
 const router = Router();
 const TERMS = ['pre_midterm', 'midterm', 'final'];
 
@@ -41,10 +43,14 @@ router.post('/', requireTeacher, async (req, res) => {
   const classRoom = await ownedClassRoom(classId, req.teacher.teacherId);
   if (!classRoom) return res.status(404).json({ error: 'ไม่พบห้องเรียนนี้' });
 
-  const valid = records.filter((r) => TERMS.includes(r.term) && r.score !== '' && r.score != null);
+  const valid = records;
 
   // Exam scores are written per student; a foreign student ID must not create a
   // term-score row that then surfaces in the public student lookup.
+  if (records.some(r => !r || r.score === undefined || !TERMS.includes(r.term) || !validMaximum(r.maxScore ?? 100)
+      || !validScore(r.score, r.maxScore ?? 100))) {
+    return res.status(400).json({ error: 'ช่วงสอบหรือคะแนนไม่ถูกต้อง คะแนนต้องอยู่ระหว่าง 0 และคะแนนเต็ม' });
+  }
   const batchError = await assertBatchBelongsToClassRoom(
     valid.map((r) => r.studentId),
     classRoom.id
@@ -53,7 +59,9 @@ router.post('/', requireTeacher, async (req, res) => {
 
   await prisma.$transaction(
     valid.map((r) =>
-      prisma.termScoreEntry.upsert({
+      r.score === '' || r.score == null
+        ? prisma.termScoreEntry.deleteMany({ where: { studentId: Number(r.studentId), classRoomId: classRoom.id, term: r.term } })
+        : prisma.termScoreEntry.upsert({
         where: {
           studentId_classRoomId_term: { studentId: Number(r.studentId), classRoomId: classRoom.id, term: r.term },
         },
@@ -62,9 +70,9 @@ router.post('/', requireTeacher, async (req, res) => {
           classRoomId: classRoom.id,
           term: r.term,
           score: Number(r.score),
-          maxScore: r.maxScore ? Number(r.maxScore) : 100,
+          maxScore: Number(r.maxScore ?? 100),
         },
-        update: { score: Number(r.score), maxScore: r.maxScore ? Number(r.maxScore) : 100 },
+        update: { score: Number(r.score), maxScore: Number(r.maxScore ?? 100) },
       })
     )
   );

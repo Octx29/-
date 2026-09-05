@@ -47,6 +47,7 @@ model ScheduleSlot {
 model Student {
   id                Int                @id @default(autoincrement())
   studentId         String             @unique // 5-digit public lookup ID
+  prefix            String             @default("") // Optional title supplied by school records
   name              String
   classRoomId       Int
   classRoom         ClassRoom          @relation(fields: [classRoomId], references: [id])
@@ -125,7 +126,12 @@ model ReminderLog {
   assignmentId Int
   assignment   Assignment @relation(fields: [assignmentId], references: [id])
   kind         String // assigned | due_tomorrow | expired
-  sentAt       DateTime   @default(now())
+  sentAt       DateTime?  @default(now())
+  status       String     @default("sent") // pending | sent | needs_review
+  retryKey     String?
+  payload      Json?
+  attemptedAt  DateTime?
+  lastError    String?
 
   @@unique([assignmentId, kind])
 }

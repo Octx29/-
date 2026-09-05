@@ -1,9 +1,10 @@
 import { Router } from 'express';
+import { schoolDate } from '../../shared/schoolDate.js';
 import { prisma } from '../lib/prisma.js';
 import { requireTeacher } from '../middleware/auth.js';
 
 const router = Router();
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = schoolDate;
 
 // GET /api/dashboard - per-classroom stats for this teacher's dashboard cards
 router.get('/', requireTeacher, async (req, res) => {

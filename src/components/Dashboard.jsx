@@ -1,14 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useResource } from '../lib/useResource';
 import { Users, BookOpen, Calendar, ChevronRight, UserCheck } from 'lucide-react';
-import { api } from '../lib/api';
 import './Dashboard.css';
 
 const Dashboard = ({ teacher, setActiveTab }) => {
-  const [classStats, setClassStats] = useState(null);
-
-  useEffect(() => {
-    api.get('/dashboard').then(setClassStats);
-  }, []);
+  const { data: classStats, error, retry } = useResource('/dashboard');
 
   return (
     <div className="animate-fade-in">
@@ -19,11 +14,12 @@ const Dashboard = ({ teacher, setActiveTab }) => {
         </div>
         <div className="date-pill">
           <Calendar size={18} />
-          {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
+          {new Date().toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', year: 'numeric', month: 'long', day: 'numeric' })}
         </div>
       </div>
 
-      {classStats === null && <p style={{ color: 'var(--text-muted)' }}>กำลังโหลด...</p>}
+      {error && <p role="alert">{error} <button className="btn btn-secondary" onClick={retry}>ลองอีกครั้ง</button></p>}
+      {classStats === null && !error && <p style={{ color: 'var(--text-muted)' }}>กำลังโหลด...</p>}
 
       {classStats && classStats.length === 0 && (
         <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', marginBottom: '2.5rem' }}>
@@ -34,7 +30,7 @@ const Dashboard = ({ teacher, setActiveTab }) => {
       {classStats && classStats.length > 0 && (
         <div className="class-dashboard-grid">
           {classStats.map((c) => (
-            <div key={c.id} className="glass-panel class-dashboard-card" onClick={() => setActiveTab('attendance')}>
+            <button type="button" key={c.id} className="glass-panel class-dashboard-card" onClick={() => setActiveTab('attendance', c.id)}>
               <div className="class-dashboard-card-header">
                 <h3>{c.name}</h3>
                 <span className="badge badge-neutral">{c.subject}</span>
@@ -53,7 +49,7 @@ const Dashboard = ({ teacher, setActiveTab }) => {
                   <span>{c.pendingGradingCount} งานรอตรวจ</span>
                 </div>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
@@ -61,7 +57,7 @@ const Dashboard = ({ teacher, setActiveTab }) => {
       <div>
         <h2 style={{ marginBottom: '1.25rem', fontSize: '1.25rem' }}>เมนูลัด (Quick Actions)</h2>
         <div className="quick-actions">
-          <div className="glass-panel action-card" onClick={() => setActiveTab('attendance')}>
+          <button type="button" className="glass-panel action-card" onClick={() => setActiveTab('attendance')}>
             <div className="action-icon">
               <Users size={20} />
             </div>
@@ -72,9 +68,9 @@ const Dashboard = ({ teacher, setActiveTab }) => {
             <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', color: 'var(--primary-color)', fontWeight: 500, gap: '0.25rem', fontSize: '0.9rem' }}>
               ไปที่หน้าเช็คชื่อ <ChevronRight size={16} />
             </div>
-          </div>
+          </button>
 
-          <div className="glass-panel action-card" onClick={() => setActiveTab('grades')}>
+          <button type="button" className="glass-panel action-card" onClick={() => setActiveTab('grades')}>
             <div className="action-icon">
               <BookOpen size={20} />
             </div>
@@ -85,7 +81,7 @@ const Dashboard = ({ teacher, setActiveTab }) => {
             <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', color: 'var(--primary-color)', fontWeight: 500, gap: '0.25rem', fontSize: '0.9rem' }}>
               ไปที่หน้าตรวจงาน <ChevronRight size={16} />
             </div>
-          </div>
+          </button>
         </div>
       </div>
     </div>

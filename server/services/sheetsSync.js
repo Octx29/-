@@ -1,7 +1,5 @@
 import { google } from 'googleapis';
 
-const LAST_COLUMN = 'Z';
-
 function getConfig() {
   const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   const sheetId = process.env.GOOGLE_SHEET_ID;
@@ -23,26 +21,27 @@ async function getSheetsClient(credentials) {
   return google.sheets({ version: 'v4', auth });
 }
 
-/**
- * Publishes a tab without a destructive window.
- *
- * The previous implementation cleared the whole tab and repopulated it in a later
- * request: a failure in between left the tab empty until some later sync happened to
- * succeed. Here the new rows are written first, and only the rows *past* the new data
- * are cleared afterwards. A failed update leaves the previous (stale) mirror intact,
- * which is recoverable; an empty tab is not.
- */
-async function writeTab(sheets, sheetId, tabName, rows) {
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: sheetId,
-    range: `${tabName}!A1`,
-    valueInputOption: 'RAW',
-    requestBody: { values: rows },
-  });
-  await sheets.spreadsheets.values.clear({
-    spreadsheetId: sheetId,
-    range: `${tabName}!A${rows.length + 1}:${LAST_COLUMN}`,
-  });
+// Replace all mirror values in one atomic request, including obsolete rows.
+async function publishTabs(sheets, sheetId, tabs) {
+  const metadata = await sheets.spreadsheets.get({ spreadsheetId: sheetId, fields: 'sheets.properties' }, { timeout: 10000, retry: false });
+  const requests = [];
+  for (const [title, rows] of tabs) {
+    const properties = metadata.data.sheets.find(s => s.properties.title === title)?.properties;
+    if (!properties) throw new Error(`Missing mirror tab: ${title}`);
+    const rowCount = Math.max(properties.gridProperties.rowCount, rows.length);
+    const columnCount = Math.max(properties.gridProperties.columnCount, 26);
+    requests.push({ updateSheetProperties: {
+      properties: { sheetId: properties.sheetId, gridProperties: { rowCount, columnCount } },
+      fields: 'gridProperties.rowCount,gridProperties.columnCount',
+    } });
+    requests.push({ updateCells: {
+      range: { sheetId: properties.sheetId, startRowIndex: 0, endRowIndex: rowCount, startColumnIndex: 0, endColumnIndex: 26 },
+      rows: rows.map(row => ({ values: row.map(value => ({ userEnteredValue:
+        typeof value === 'number' ? { numberValue: value } : { stringValue: String(value ?? '') },
+      })) })), fields: 'userEnteredValue',
+    } });
+  }
+  await sheets.spreadsheets.batchUpdate({ spreadsheetId: sheetId, requestBody: { requests } }, { timeout: 10000, retry: false });
 }
 
 async function buildTabs(prisma) {
@@ -73,7 +72,7 @@ async function buildTabs(prisma) {
         s.student.studentId,
         s.student.name,
         s.submittedAt ? 'ใช่' : 'ไม่',
-        s.score ?? '',
+        s.submittedAt ? s.score ?? '' : '',
         s.checkedVia,
       ]),
     ]],
@@ -89,6 +88,7 @@ async function runSync(prisma, overrides) {
   let sheets = overrides.sheets ?? null;
   let targetSheetId = sheetId;
 
+  try {
   if (!sheets) {
     const config = getConfig();
     if (!config) {
@@ -99,14 +99,13 @@ async function runSync(prisma, overrides) {
     targetSheetId = config.sheetId;
   }
 
-  try {
-    // Read the database inside the job, not before it was queued. Because jobs are
-    // serialised, the last job to run always publishes the newest state - an older
-    // overlapping save can no longer overwrite a newer one.
-    const tabs = await buildTabs(prisma);
-    for (const [tabName, rows] of tabs) {
-      await writeTab(sheets, targetSheetId, tabName, rows);
-    }
+    // Coordinate separate serverless workers through PostgreSQL. Read only after
+    // acquiring the lock, and hold it until the external publish settles.
+    await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sheet-mirror:${targetSheetId}`}))`;
+      const tabs = await buildTabs(tx);
+      await publishTabs(sheets, targetSheetId, tabs);
+    }, { maxWait: 30000, timeout: 60000 });
     lastFailure = null;
     console.log('[sheetsSync] synced Students/Attendance/Grades/TermScores tabs');
     return { ok: true, skipped: false };
@@ -133,7 +132,7 @@ export function lastSyncFailure() {
  *
  * Calls are serialised and coalesced. Two saves that overlap used to interleave their
  * clear/update requests against the same spreadsheet, so an older export could land
- * after a newer one and regress the mirror. Now at most one export runs at a time, and
+ * after a newer one and regress the mirror. Database locking also protects separate workers. Within this process,
  * concurrent callers share the single pending job that will read the database after
  * every in-flight write has settled.
  *

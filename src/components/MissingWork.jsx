@@ -1,13 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useResource } from '../lib/useResource';
 import { AlertTriangle } from 'lucide-react';
-import { api } from '../lib/api';
 
 const MissingWork = () => {
-  const [items, setItems] = useState(null);
-
-  useEffect(() => {
-    api.get('/missing-work').then(setItems);
-  }, []);
+  const { data: items, error, retry } = useResource('/missing-work');
 
   return (
     <div className="animate-fade-in">
@@ -18,7 +13,8 @@ const MissingWork = () => {
         </div>
       </div>
 
-      {items === null && <p style={{ color: 'var(--text-muted)' }}>กำลังโหลด...</p>}
+      {error && <p role="alert">{error} <button className="btn btn-secondary" onClick={retry}>ลองอีกครั้ง</button></p>}
+      {items === null && !error && <p style={{ color: 'var(--text-muted)' }}>กำลังโหลด...</p>}
 
       {items && items.length === 0 && (
         <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>

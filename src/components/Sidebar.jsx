@@ -23,14 +23,15 @@ const Sidebar = ({ activeTab, setActiveTab, teacher, onLogout }) => {
 
       <nav className="nav-links">
         {navItems.map((item) => (
-          <div
+          <button type="button"
+            aria-current={activeTab === item.id ? 'page' : undefined}
             key={item.id}
             className={`nav-item ${activeTab === item.id ? 'active' : ''}`}
             onClick={() => setActiveTab(item.id)}
           >
             <item.icon size={18} />
             <span>{item.label}</span>
-          </div>
+          </button>
         ))}
       </nav>
 
@@ -42,13 +43,13 @@ const Sidebar = ({ activeTab, setActiveTab, teacher, onLogout }) => {
             <p>ครูประจำวิชา{teacher?.subject ?? ''}</p>
           </div>
         </div>
-        <div
+        <button type="button"
           className="nav-item"
           style={{ color: 'var(--danger)' }}
           onClick={onLogout}
         >
           <span>ออกจากระบบ</span>
-        </div>
+        </button>
       </div>
     </aside>
   );

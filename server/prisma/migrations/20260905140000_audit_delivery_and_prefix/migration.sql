@@ -1,0 +1,7 @@
+ALTER TABLE "Student" ADD COLUMN "prefix" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ReminderLog" ALTER COLUMN "sentAt" DROP NOT NULL;
+ALTER TABLE "ReminderLog" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'sent',
+  ADD COLUMN "retryKey" TEXT,
+  ADD COLUMN "payload" JSONB,
+  ADD COLUMN "attemptedAt" TIMESTAMP(3),
+  ADD COLUMN "lastError" TEXT;

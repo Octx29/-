@@ -61,7 +61,7 @@ const CustomReportBuilder = ({ classes }) => {
       const name = filename.trim() || 'รายงานกำหนดเอง';
       await api.download(
         `/reports/custom.xlsx?classId=${classId}&fields=${fields.join(',')}&filename=${encodeURIComponent(name)}`,
-        `${name}.xlsx`
+        /\.xlsx$/i.test(name) ? name : `${name}.xlsx`
       );
     } catch (err) {
       setError(err.message);
@@ -142,16 +142,20 @@ const Reports = () => {
   const [classes, setClasses] = useState([]);
   const [classId, setClassId] = useState('');
   const [downloading, setDownloading] = useState(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/classes').then(setClasses);
+    api.get('/classes').then(setClasses).catch(err => setError(err.message));
   }, []);
 
   const handleDownload = async (kind) => {
     setDownloading(kind);
+    setError('');
     try {
       const query = classId ? `?classId=${classId}` : '';
       await api.download(`/reports/${kind}.xlsx${query}`, `${kind}.xlsx`);
+    } catch (err) {
+      setError(err.message);
     } finally {
       setDownloading(null);
     }
@@ -159,6 +163,7 @@ const Reports = () => {
 
   return (
     <div className="animate-fade-in">
+      {error && <p role="alert">{error}</p>}
       <div className="dashboard-header">
         <div>
           <h1 style={{ fontSize: '1.75rem', marginBottom: '0.25rem' }}>รายงาน</h1>

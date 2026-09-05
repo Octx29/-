@@ -1,42 +1,31 @@
 const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
 
-// No-op (logs only) until LINE_CHANNEL_ACCESS_TOKEN is set and the classroom has a lineGroupId.
-// Never throws: a LINE outage or missing config must never break the caller's save/create flow.
-async function notifyGroup(lineGroupId, message) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token || !lineGroupId) {
-    console.log(`[lineNotify] not configured or no lineGroupId set - would have sent: "${message}"`);
-    return;
-  }
+export function reminderPayload(classRoom, assignment, kind) {
+  const text = kind === 'expired'
+    ? `❗ งาน "${assignment.title}" (${classRoom.name}) เลยกำหนดส่ง ${assignment.dueDate} แล้ว`
+    : `⏰ แจ้งเตือน: งาน "${assignment.title}" (${classRoom.name}) กำหนดส่ง ${assignment.dueDate}`;
+  return { to: classRoom.lineGroupId, messages: [{ type: 'text', text }] };
+}
 
+// Accepted by LINE does not guarantee delivery to every recipient.
+export async function pushLine(payload, retryKey) {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!token || !payload.to) return { accepted: false, error: 'LINE not configured' };
   try {
     const res = await fetch(LINE_PUSH_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ to: lineGroupId, messages: [{ type: 'text', text: message }] }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`,
+        ...(retryKey ? { 'X-Line-Retry-Key': retryKey } : {}) },
+      body: JSON.stringify(payload), signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) {
-      console.error(`[lineNotify] push failed (${res.status}): ${await res.text()}`);
-    } else {
-      console.log(`[lineNotify] sent to ${lineGroupId}: "${message}"`);
-    }
-  } catch (err) {
-    console.error('[lineNotify] push error:', err.message);
-  }
+    if (res.ok || (retryKey && res.status === 409 && res.headers.get('x-line-accepted-request-id'))) return { accepted: true };
+    return { accepted: false, error: `LINE rejected request (${res.status})` };
+  } catch (error) { return { accepted: false, error: error.message }; }
 }
 
-export function notifyNewAssignment(classRoom, assignment) {
+export async function notifyNewAssignment(classRoom, assignment) {
   const due = assignment.dueDate ? ` กำหนดส่ง ${assignment.dueDate}` : '';
-  return notifyGroup(classRoom.lineGroupId, `📚 มีงานใหม่: "${assignment.title}" (${classRoom.name})${due}`);
-}
-
-export function notifyDueTomorrow(classRoom, assignment) {
-  return notifyGroup(classRoom.lineGroupId, `⏰ แจ้งเตือน: งาน "${assignment.title}" (${classRoom.name}) กำหนดส่งพรุ่งนี้!`);
-}
-
-export function notifyExpired(classRoom, assignment) {
-  return notifyGroup(classRoom.lineGroupId, `❗ งาน "${assignment.title}" (${classRoom.name}) เลยกำหนดส่งแล้ว`);
+  const result = await pushLine({ to: classRoom.lineGroupId, messages: [{ type: 'text', text: `📚 มีงานใหม่: "${assignment.title}" (${classRoom.name})${due}` }] });
+  if (!result.accepted) console.warn('[lineNotify]', result.error);
+  return result;
 }

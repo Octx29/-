@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useResource } from '../lib/useResource';
 import { Clock, Users, BookOpen } from 'lucide-react';
-import { api } from '../lib/api';
 import './Dashboard.css'; // Reusing some clean card styles
 
 const DAY_LABELS = ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'];
@@ -17,11 +16,7 @@ const groupByDay = (slots) => {
 };
 
 const Schedule = ({ setActiveTab }) => {
-  const [slots, setSlots] = useState(null);
-
-  useEffect(() => {
-    api.get('/schedule').then(setSlots);
-  }, []);
+  const { data: slots, error, retry } = useResource('/schedule');
 
   const scheduleByDay = slots ? groupByDay(slots) : [];
 
@@ -34,7 +29,8 @@ const Schedule = ({ setActiveTab }) => {
         </div>
       </div>
 
-      {slots === null && <p style={{ color: 'var(--text-muted)' }}>กำลังโหลด...</p>}
+      {error && <p role="alert">{error} <button className="btn btn-secondary" onClick={retry}>ลองอีกครั้ง</button></p>}
+      {slots === null && !error && <p style={{ color: 'var(--text-muted)' }}>กำลังโหลด...</p>}
 
       {slots && scheduleByDay.length === 0 && (
         <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -48,7 +44,7 @@ const Schedule = ({ setActiveTab }) => {
             <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', color: 'var(--text-main)', borderBottom: '2px solid var(--border-color)', paddingBottom: '0.5rem' }}>
               {daySchedule.day}
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: '1rem' }}>
               {daySchedule.classes.map(cls => (
                 <div key={cls.id} className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', transition: 'border-color 0.2s ease' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -65,14 +61,14 @@ const Schedule = ({ setActiveTab }) => {
                     <button
                       className="btn btn-secondary"
                       style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
-                      onClick={() => setActiveTab('attendance')}
+                      onClick={() => setActiveTab('attendance', cls.classRoomId)}
                     >
                       <Users size={14} /> เช็คชื่อ
                     </button>
                     <button
                       className="btn btn-secondary"
                       style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
-                      onClick={() => setActiveTab('grades')}
+                      onClick={() => setActiveTab('grades', cls.classRoomId)}
                     >
                       <BookOpen size={14} /> ตรวจงาน
                     </button>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Download, Plus, Save } from 'lucide-react';
+import { Plus, Save } from 'lucide-react';
 import { api } from '../lib/api';
 import './Grades.css';
 
@@ -12,13 +12,17 @@ const NewAssignmentForm = ({ classId, onCreated, onCancel }) => {
   const [dueDate, setDueDate] = useState('');
   const [maxScore, setMaxScore] = useState(100);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
+    setError('');
     try {
       await api.post('/assignments', { classId, title, type, dueDate: dueDate || null, maxScore });
       onCreated();
+    } catch (err) {
+      setError(err.message);
     } finally {
       setSubmitting(false);
     }
@@ -30,6 +34,7 @@ const NewAssignmentForm = ({ classId, onCreated, onCancel }) => {
       className="glass-panel"
       style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}
     >
+      {error && <p role="alert">{error}</p>}
       <div className="form-group" style={{ minWidth: '220px' }}>
         <label>ชื่องาน</label>
         <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} required
@@ -50,7 +55,7 @@ const NewAssignmentForm = ({ classId, onCreated, onCancel }) => {
       </div>
       <div className="form-group">
         <label>คะแนนเต็ม</label>
-        <input type="number" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} style={{ width: '80px', padding: '0.55rem 0.75rem', borderRadius: 'var(--border-radius)', border: '1px solid var(--border-color)' }} />
+        <input type="number" min="1" step="1" required value={maxScore} onChange={(e) => setMaxScore(e.target.value)} style={{ width: '80px', padding: '0.55rem 0.75rem', borderRadius: 'var(--border-radius)', border: '1px solid var(--border-color)' }} />
       </div>
       <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? 'กำลังสร้าง...' : 'สร้างงาน'}</button>
       <button type="button" className="btn btn-secondary" onClick={onCancel}>ยกเลิก</button>
@@ -116,7 +121,7 @@ const AssignmentGrading = ({ classId }) => {
     if (!rosterReady) return;
     setLoadedRoster((current) => ({
       ...current,
-      rows: current.rows.map((s) => (s.studentId === studentId ? { ...s, submitted: !s.submitted } : s)),
+      rows: current.rows.map((s) => (s.studentId === studentId ? { ...s, submitted: !s.submitted, score: null } : s)),
     }));
   };
 
@@ -212,14 +217,14 @@ const AssignmentGrading = ({ classId }) => {
                   </td>
                   <td>{student.roll}</td>
                   <td>
-                    <span
+                    <button type="button" aria-pressed={student.submitted}
                       className={`badge ${student.submitted ? 'badge-success' : 'badge-danger'}`}
                       style={{ cursor: 'pointer' }}
                       onClick={() => toggleSubmitted(student.studentId)}
                       title="คลิกเพื่อสลับสถานะ"
                     >
                       {student.submitted ? 'ส่งแล้ว' : 'ยังไม่ส่ง'}
-                    </span>
+                    </button>
                   </td>
                   <td style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <input
@@ -297,7 +302,7 @@ const TermScores = ({ classId }) => {
       const records = [];
       for (const r of loaded.rows) {
         for (const term of Object.keys(TERM_LABELS)) {
-          if (r[term]?.score !== undefined && r[term]?.score !== null && r[term]?.score !== '') {
+          if (r[term] != null) {
             records.push({ studentId: r.studentId, term, score: r[term].score, maxScore: r[term].maxScore ?? 100 });
           }
         }
@@ -363,20 +368,22 @@ const TermScores = ({ classId }) => {
   );
 };
 
-const Grades = () => {
+const Grades = ({ initialClassId = null }) => {
   const [classes, setClasses] = useState([]);
   const [classId, setClassId] = useState(null);
+  const [error, setError] = useState('');
   const [view, setView] = useState('assignments'); // assignments | terms
 
   useEffect(() => {
     api.get('/classes').then((data) => {
       setClasses(data);
-      if (data.length > 0) setClassId(data[0].id);
-    });
-  }, []);
+      if (data.length > 0) setClassId(data.some(c => c.id === initialClassId) ? initialClassId : data[0].id);
+    }).catch(err => setError(err.message));
+  }, [initialClassId]);
 
   return (
     <div className="animate-fade-in">
+      {error && <p role="alert">{error}</p>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', marginBottom: '0.25rem' }}>ตรวจงานและประเมินผล</h1>
