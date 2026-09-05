@@ -47,7 +47,10 @@ const QRRoster = ({ classId }) => {
 };
 
 const CameraScanner = ({ classId, mode }) => {
-  const [assignments, setAssignments] = useState([]);
+  // The assignment list is bound to the classroom it was loaded for, so a classroom
+  // switch invalidates the previous classroom's assignments immediately rather than
+  // when the next response happens to arrive.
+  const [loadedAssignments, setLoadedAssignments] = useState({ classId: null, items: [] });
   const [assignmentId, setAssignmentId] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [manualCode, setManualCode] = useState('');
@@ -55,22 +58,61 @@ const CameraScanner = ({ classId, mode }) => {
   const html5QrRef = useRef(null);
 
   useEffect(() => {
-    if (mode !== 'submission' || !classId) return;
-    api.get(`/assignments?classId=${classId}`).then((data) => {
-      setAssignments(data);
-      setAssignmentId((current) => (data.some((a) => a.id === current) ? current : data[0]?.id ?? null));
-    });
+    if (mode !== 'submission' || !classId) return undefined;
+    let active = true;
+    setLoadedAssignments({ classId: null, items: [] });
+    api.get(`/assignments?classId=${classId}`)
+      .then((data) => {
+        if (!active) return;
+        setLoadedAssignments({ classId, items: data });
+        setAssignmentId((current) => (data.some((a) => a.id === current) ? current : data[0]?.id ?? null));
+      })
+      .catch(() => {
+        if (active) setLoadedAssignments({ classId, items: [] });
+      });
+    return () => { active = false; };
   }, [mode, classId]);
 
+  const assignmentsReady = mode !== 'submission' || loadedAssignments.classId === classId;
+  const assignments = assignmentsReady ? loadedAssignments.items : [];
+  // An assignment ID only counts once it is confirmed to belong to the loaded classroom.
+  const activeAssignmentId = assignments.some((a) => a.id === assignmentId) ? assignmentId : null;
+
+  // The camera callback is registered once, when the camera starts, and html5-qrcode
+  // keeps calling that exact function. A callback that closes over classId/mode/
+  // assignmentId keeps writing to whatever was selected at start time. This ref is the
+  // single source of truth the callback reads at scan time, and it is assigned during
+  // render - not in an effect - so a frame decoded immediately after a selection change
+  // still sees the new selection rather than the previous one.
+  const scanContextRef = useRef(null);
+  scanContextRef.current = { classId, mode, assignmentId: activeAssignmentId, assignmentsReady };
+
+  const appendLog = (entry) =>
+    setLog((l) => [{ time: new Date().toLocaleTimeString('th-TH'), ...entry }, ...l].slice(0, 20));
+
   const submitCode = async (code) => {
+    // Read the live selection, never the values captured when the camera started.
+    const context = scanContextRef.current;
+    if (!context.classId) {
+      appendLog({ ok: false, message: `${code}: ยังไม่ได้เลือกห้องเรียน` });
+      return;
+    }
+    if (context.mode === 'submission' && (!context.assignmentsReady || !context.assignmentId)) {
+      appendLog({ ok: false, message: `${code}: ยังไม่ได้เลือกงานที่จะเช็ค` });
+      return;
+    }
     try {
       let result;
-      if (mode === 'attendance') result = await api.post('/scan/attendance', { classId, studentCode: code });
-      else if (mode === 'submission') result = await api.post('/scan/submission', { assignmentId, studentCode: code });
-      else result = await api.post('/scan/materials', { classId, studentCode: code });
-      setLog((l) => [{ time: new Date().toLocaleTimeString('th-TH'), ok: true, message: `${result.student.roll} · ${result.student.name}` }, ...l].slice(0, 20));
+      if (context.mode === 'attendance') {
+        result = await api.post('/scan/attendance', { classId: context.classId, studentCode: code });
+      } else if (context.mode === 'submission') {
+        result = await api.post('/scan/submission', { assignmentId: context.assignmentId, studentCode: code });
+      } else {
+        result = await api.post('/scan/materials', { classId: context.classId, studentCode: code });
+      }
+      appendLog({ ok: true, message: `${result.student.roll} · ${result.student.name}` });
     } catch (err) {
-      setLog((l) => [{ time: new Date().toLocaleTimeString('th-TH'), ok: false, message: `${code}: ${err.message}` }, ...l].slice(0, 20));
+      appendLog({ ok: false, message: `${code}: ${err.message}` });
     }
   };
 
@@ -81,6 +123,7 @@ const CameraScanner = ({ classId, mode }) => {
       await html5QrCode.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: 220 },
+        // Registered once for the lifetime of the camera - see scanContextRef above.
         (decodedText) => submitCode(decodedText.trim()),
         () => {}
       );
@@ -121,7 +164,7 @@ const CameraScanner = ({ classId, mode }) => {
         <div className="glass-panel" style={{ padding: '1rem', marginBottom: '1rem' }}>
           <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>เลือกงานที่จะเช็ค</label>
           <select
-            value={assignmentId ?? ''}
+            value={activeAssignmentId ?? ''}
             onChange={(e) => setAssignmentId(Number(e.target.value))}
             style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--border-radius)', border: '1px solid var(--border-color)' }}
           >
