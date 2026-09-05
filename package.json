@@ -8,6 +8,7 @@
     "build": "vite build",
     "postinstall": "prisma generate --schema server/prisma/schema.prisma",
     "lint": "oxlint",
+    "test": "playwright test",
     "preview": "vite preview",
     "server": "node server/index.js",
     "server:migrate": "dotenv -e server/.env -- prisma migrate dev --schema server/prisma/schema.prisma",
@@ -37,6 +38,7 @@
     "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",

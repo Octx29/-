@@ -61,45 +61,84 @@ const NewAssignmentForm = ({ classId, onCreated, onCancel }) => {
 const AssignmentGrading = ({ classId }) => {
   const [assignments, setAssignments] = useState([]);
   const [assignmentId, setAssignmentId] = useState(null);
-  const [roster, setRoster] = useState([]);
+  const [loadedRoster, setLoadedRoster] = useState({ assignmentId: null, rows: [] });
+  const [assignmentRefresh, setAssignmentRefresh] = useState(0);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState('');
+  const [rosterError, setRosterError] = useState(null);
+  const [saveError, setSaveError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showNewForm, setShowNewForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const loadAssignments = () => {
-    api.get(`/assignments?classId=${classId}`).then((data) => {
-      setAssignments(data);
-      setAssignmentId((current) => (data.some((a) => a.id === current) ? current : data[0]?.id ?? null));
-    });
-  };
-
-  useEffect(loadAssignments, [classId]);
+  const loadAssignments = () => setAssignmentRefresh((current) => current + 1);
 
   useEffect(() => {
-    if (!assignmentId) {
-      setRoster([]);
-      return;
-    }
-    api.get(`/assignments/${assignmentId}/submissions`).then((data) => setRoster(data.roster));
+    let active = true;
+    setListLoading(true);
+    setListError('');
+    api.get(`/assignments?classId=${classId}`)
+      .then((data) => {
+        if (!active) return;
+        setAssignments(data);
+        setAssignmentId((current) => (data.some((a) => a.id === current) ? current : data[0]?.id ?? null));
+      })
+      .catch((err) => { if (active) setListError(err.message); })
+      .finally(() => { if (active) setListLoading(false); });
+    return () => { active = false; };
+  }, [classId, assignmentRefresh]);
+
+  useEffect(() => {
+    let active = true;
+    setLoadedRoster({ assignmentId: null, rows: [] });
+    setRosterError(null);
+    if (!assignmentId) return;
+    api.get(`/assignments/${assignmentId}/submissions`)
+      .then((data) => {
+        if (active) setLoadedRoster({ assignmentId, rows: data.roster });
+      })
+      .catch((err) => {
+        if (active) setRosterError({ assignmentId, message: err.message });
+      });
+    return () => { active = false; };
   }, [assignmentId]);
 
   const currentAssignment = assignments.find((a) => a.id === assignmentId);
+  // Selection changes render before the new request completes. Never combine
+  // the new assignment ID with rows loaded for a different assignment.
+  const rosterReady = Boolean(currentAssignment && loadedRoster.assignmentId === assignmentId);
+  const roster = rosterReady ? loadedRoster.rows : [];
+  const error = listError
+    || (rosterError?.assignmentId === assignmentId ? rosterError.message : '')
+    || (saveError?.assignmentId === assignmentId ? saveError.message : '');
 
   const toggleSubmitted = (studentId) => {
-    setRoster(roster.map((s) => (s.studentId === studentId ? { ...s, submitted: !s.submitted } : s)));
+    if (!rosterReady) return;
+    setLoadedRoster((current) => ({
+      ...current,
+      rows: current.rows.map((s) => (s.studentId === studentId ? { ...s, submitted: !s.submitted } : s)),
+    }));
   };
 
   const updateScore = (studentId, score) => {
-    setRoster(roster.map((s) => (s.studentId === studentId ? { ...s, score } : s)));
+    if (!rosterReady) return;
+    setLoadedRoster((current) => ({
+      ...current,
+      rows: current.rows.map((s) => (s.studentId === studentId ? { ...s, score } : s)),
+    }));
   };
 
   const handleSave = async () => {
+    if (!rosterReady || saving) return;
     setSaving(true);
+    setSaveError(null);
     try {
       await api.post(`/assignments/${assignmentId}/submissions`, {
         records: roster.map((s) => ({ studentId: s.studentId, submitted: s.submitted, score: s.score })),
       });
       loadAssignments();
+    } catch (err) {
+      setSaveError({ assignmentId, message: err.message });
     } finally {
       setSaving(false);
     }
@@ -109,6 +148,7 @@ const AssignmentGrading = ({ classId }) => {
 
   return (
     <>
+      {error && <p role="alert" style={{ color: 'var(--danger)' }}>{error}</p>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginBottom: '1.5rem' }}>
         <input
           type="text"
@@ -140,7 +180,7 @@ const AssignmentGrading = ({ classId }) => {
             ))}
           </select>
         </div>
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving || !assignmentId}>
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving || !rosterReady}>
           <Save size={16} /> {saving ? 'กำลังบันทึก...' : 'บันทึกคะแนน'}
         </button>
       </div>
@@ -201,7 +241,11 @@ const AssignmentGrading = ({ classId }) => {
             {roster.length === 0 && (
               <tr>
                 <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                  ยังไม่มีงานในห้องนี้ — กด "สร้างงานใหม่" เพื่อเริ่ม
+                  {listLoading || (assignmentId && !rosterReady && !error)
+                    ? 'กำลังโหลด...'
+                    : error ? 'ไม่สามารถโหลดข้อมูลได้ กรุณาเลือกงานอีกครั้ง'
+                    : assignmentId ? 'ห้องนี้ยังไม่มีรายชื่อนักเรียน'
+                    : 'ยังไม่มีงานในห้องนี้ — กด "สร้างงานใหม่" เพื่อเริ่ม'}
                 </td>
               </tr>
             )}
@@ -329,7 +373,7 @@ const Grades = () => {
         </button>
       </div>
 
-      {classId && view === 'assignments' && <AssignmentGrading classId={classId} />}
+      {classId && view === 'assignments' && <AssignmentGrading key={classId} classId={classId} />}
       {classId && view === 'terms' && <TermScores classId={classId} />}
     </div>
   );
