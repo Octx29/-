@@ -1,5 +1,22 @@
 # React + Vite
 
+## Grading regression tests
+
+```sh
+npm ci
+npx playwright install chromium
+npm test
+```
+
+The tests start Vite automatically and exercise the real grading screen in
+Chromium. API responses are controlled by the tests, so no database or teacher
+credentials are needed. They cover switching assignments while a roster loads,
+out-of-order responses, switching classrooms, and failed roster loads. A separate
+in-memory store checks that a stale roster cannot overwrite another assignment's
+grades and that edits to the selected assignment still save correctly.
+
+See [the bug reproduction and verification notes](docs/grading-race.md).
+
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
 Currently, two official plugins are available:
