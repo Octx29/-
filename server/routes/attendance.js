@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireTeacher } from '../middleware/auth.js';
-import { ownedClassRoom } from '../lib/authorize.js';
+import { ownedClassRoom, assertBatchBelongsToClassRoom } from '../lib/authorize.js';
 import { syncToSheets } from '../services/sheetsSync.js';
 
 const router = Router();
@@ -47,22 +47,33 @@ router.post('/', requireTeacher, async (req, res) => {
   if (!classRoom) return res.status(404).json({ error: 'ไม่พบห้องเรียนนี้' });
 
   const validStatuses = new Set(['present', 'absent', 'late']);
+  const writable = records.filter((r) => validStatuses.has(r.status));
+
+  // Owning the classroom does not imply owning the student IDs in the body. Every
+  // student is checked against this classroom, and any foreign ID rejects the whole
+  // batch rather than letting a partial write land.
+  const batchError = await assertBatchBelongsToClassRoom(
+    writable.map((r) => r.id),
+    classRoom.id
+  );
+  if (batchError) return res.status(batchError.status).json(batchError.body);
 
   await prisma.$transaction(
-    records
-      .filter((r) => validStatuses.has(r.status))
-      .map((r) =>
-        prisma.attendanceRecord.upsert({
-          where: { studentId_date: { studentId: Number(r.id), date: String(date) } },
-          create: {
-            studentId: Number(r.id),
-            classRoomId: classRoom.id,
-            date: String(date),
-            status: r.status,
-          },
-          update: { status: r.status },
-        })
-      )
+    writable.map((r) =>
+      prisma.attendanceRecord.upsert({
+        // studentId_date is unique across classrooms, so the classroom is pinned on
+        // both sides of the upsert: membership has just been verified above, and the
+        // update leaves classRoomId untouched for an existing row.
+        where: { studentId_date: { studentId: Number(r.id), date: String(date) } },
+        create: {
+          studentId: Number(r.id),
+          classRoomId: classRoom.id,
+          date: String(date),
+          status: r.status,
+        },
+        update: { status: r.status, classRoomId: classRoom.id },
+      })
+    )
   );
 
   await syncToSheets(prisma);

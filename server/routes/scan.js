@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireTeacher } from '../middleware/auth.js';
-import { ownedClassRoom, ownedAssignment } from '../lib/authorize.js';
+import { ownedClassRoom, ownedAssignment, validStudentCode } from '../lib/authorize.js';
 import { syncToSheets } from '../services/sheetsSync.js';
 
 const router = Router();
@@ -10,10 +10,16 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 // POST /api/scan/attendance  { classId, studentCode }
 router.post('/attendance', requireTeacher, async (req, res) => {
   const { classId, studentCode } = req.body;
+  // An omitted or malformed code must fail here. Passing undefined into the query
+  // drops the studentId filter entirely and findFirst then matches an arbitrary
+  // first student in the classroom.
+  const code = validStudentCode(studentCode);
+  if (!code) return res.status(400).json({ error: 'รหัสนักเรียนไม่ถูกต้อง' });
+
   const classRoom = await ownedClassRoom(classId, req.teacher.teacherId);
   if (!classRoom) return res.status(404).json({ error: 'ไม่พบห้องเรียนนี้' });
 
-  const student = await prisma.student.findFirst({ where: { studentId: studentCode, classRoomId: classRoom.id } });
+  const student = await prisma.student.findFirst({ where: { studentId: code, classRoomId: classRoom.id } });
   if (!student) return res.status(404).json({ error: 'ไม่พบนักเรียนรหัสนี้ในห้องนี้' });
 
   const date = todayIso();
@@ -30,10 +36,13 @@ router.post('/attendance', requireTeacher, async (req, res) => {
 // POST /api/scan/submission  { assignmentId, studentCode }
 router.post('/submission', requireTeacher, async (req, res) => {
   const { assignmentId, studentCode } = req.body;
+  const code = validStudentCode(studentCode);
+  if (!code) return res.status(400).json({ error: 'รหัสนักเรียนไม่ถูกต้อง' });
+
   const assignment = await ownedAssignment(assignmentId, req.teacher.teacherId);
   if (!assignment) return res.status(404).json({ error: 'ไม่พบงานนี้' });
 
-  const student = await prisma.student.findFirst({ where: { studentId: studentCode, classRoomId: assignment.classRoomId } });
+  const student = await prisma.student.findFirst({ where: { studentId: code, classRoomId: assignment.classRoomId } });
   if (!student) return res.status(404).json({ error: 'ไม่พบนักเรียนรหัสนี้ในห้องนี้' });
 
   await prisma.submission.upsert({
@@ -49,10 +58,13 @@ router.post('/submission', requireTeacher, async (req, res) => {
 // POST /api/scan/materials  { classId, studentCode }
 router.post('/materials', requireTeacher, async (req, res) => {
   const { classId, studentCode } = req.body;
+  const code = validStudentCode(studentCode);
+  if (!code) return res.status(400).json({ error: 'รหัสนักเรียนไม่ถูกต้อง' });
+
   const classRoom = await ownedClassRoom(classId, req.teacher.teacherId);
   if (!classRoom) return res.status(404).json({ error: 'ไม่พบห้องเรียนนี้' });
 
-  const student = await prisma.student.findFirst({ where: { studentId: studentCode, classRoomId: classRoom.id } });
+  const student = await prisma.student.findFirst({ where: { studentId: code, classRoomId: classRoom.id } });
   if (!student) return res.status(404).json({ error: 'ไม่พบนักเรียนรหัสนี้ในห้องนี้' });
 
   const date = todayIso();

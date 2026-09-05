@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireTeacher } from '../middleware/auth.js';
-import { ownedClassRoom, ownedAssignment } from '../lib/authorize.js';
+import { ownedClassRoom, ownedAssignment, assertBatchBelongsToClassRoom } from '../lib/authorize.js';
 import { syncToSheets } from '../services/sheetsSync.js';
 import { notifyNewAssignment } from '../services/lineNotify.js';
 
@@ -93,6 +93,14 @@ router.post('/:id/submissions', requireTeacher, async (req, res) => {
 
   const { records } = req.body;
   if (!Array.isArray(records)) return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+
+  // The assignment is owned, but the student IDs in the body are not implied by that.
+  // Any student outside the assignment's classroom rejects the whole batch.
+  const batchError = await assertBatchBelongsToClassRoom(
+    records.map((r) => r.studentId),
+    assignment.classRoomId
+  );
+  if (batchError) return res.status(batchError.status).json(batchError.body);
 
   await prisma.$transaction(
     records.map((r) =>
